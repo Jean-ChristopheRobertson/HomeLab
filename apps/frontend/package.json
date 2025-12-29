@@ -1,0 +1,13 @@
+{
+  "name": "sre-dashboard-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for SRE Dashboard",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0"
+  }
+}

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRE Dashboard</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background-color: #f0f2f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; }
+        h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; color: #555; }
+        .loading { text-align: center; font-style: italic; color: #888; }
+        .error { color: red; }
+        .weather-temp { font-size: 2em; font-weight: bold; }
+        .score-board { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #eee; padding: 5px 0; }
+        .news-item { margin-bottom: 15px; }
+        .news-title { font-weight: bold; }
+        .news-meta { font-size: 0.8em; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Homelab SRE Dashboard</h1>
+        <div id="content" class="grid">
+            <div class="loading">Loading dashboard data...</div>
+        </div>
+    </div>
+
+    <script>
+        async function loadDashboard() {
+            const contentDiv = document.getElementById('content');
+            try {
+                const response = await fetch('/api/dashboard');
+                const data = await response.json();
+                
+                let html = '';
+
+                // Weather Card
+                if (data.weather && !data.weather.error) {
+                    html += `
+                        <div class="card">
+                            <h2>Weather: ${data.weather.city}</h2>
+                            <div class="weather-temp">${data.weather.temperature}°${data.weather.unit}</div>
+                            <div>${data.weather.condition}</div>
+                        </div>
+                    `;
+                } else {
+                     html += `<div class="card error"><h2>Weather</h2>Failed to load</div>`;
+                }
+
+                // Hockey Card
+                if (data.hockey && !data.hockey.error) {
+                    let gamesHtml = data.hockey.games.map(g => `
+                        <div class="score-board">
+                            <span>${g.home} vs ${g.away}</span>
+                            <span>${g.home_score} - ${g.away_score}</span>
+                        </div>
+                    `).join('');
+                    html += `
+                        <div class="card">
+                            <h2>Hockey Scores</h2>
+                            ${gamesHtml}
+                        </div>
+                    `;
+                } else {
+                     html += `<div class="card error"><h2>Hockey</h2>Failed to load</div>`;
+                }
+
+                // News Card
+                if (data.news && !data.news.error) {
+                    let newsHtml = data.news.headlines.map(n => `
+                        <div class="news-item">
+                            <div class="news-title">${n.title}</div>
+                            <div class="news-meta">${n.category} - ${new Date(n.timestamp).toLocaleTimeString()}</div>
+                        </div>
+                    `).join('');
+                    html += `
+                        <div class="card">
+                            <h2>Local News</h2>
+                            ${newsHtml}
+                        </div>
+                    `;
+                } else {
+                     html += `<div class="card error"><h2>News</h2>Failed to load</div>`;
+                }
+
+                contentDiv.innerHTML = html;
+
+            } catch (e) {
+                contentDiv.innerHTML = '<div class="error">Failed to load dashboard. Is the BFF running?</div>';
+                console.error(e);
+            }
+        }
+
+        loadDashboard();
+        setInterval(loadDashboard, 30000); // Refresh every 30s
+    </script>
+</body>
+</html>

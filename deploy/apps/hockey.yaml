@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hockey-service
+  namespace: sre-dashboard
+spec:
+  selector:
+    matchLabels:
+      app: hockey-service
+  template:
+    metadata:
+      labels:
+        app: hockey-service
+    spec:
+      containers:
+        - name: hockey-service
+          image: hockey-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hockey-service
+  namespace: sre-dashboard
+spec:
+  selector:
+    app: hockey-service
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
