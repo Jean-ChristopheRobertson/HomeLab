@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 import random
 import time
+import httpx
 from prometheus_client import make_asgi_app, Counter, Histogram
 
 app = FastAPI()
@@ -28,18 +29,44 @@ def read_root():
     return {"service": "hockey-service", "status": "healthy"}
 
 @app.get("/scores")
-def get_scores():
-    # Mock data
-    teams = ["Canadiens", "Maple Leafs", "Bruins", "Rangers", "Oilers"]
-    games = []
-    for i in range(3):
-        home = random.choice(teams)
-        away = random.choice([t for t in teams if t != home])
-        games.append({
-            "home": home,
-            "away": away,
-            "home_score": random.randint(0, 5),
-            "away_score": random.randint(0, 5),
-            "period": "Final"
-        })
-    return {"games": games}
+async def get_scores():
+    try:
+        url = "https://api-web.nhle.com/v1/schedule/now"
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.get(url)
+            
+            if response.status_code != 200:
+                return {"error": "NHL API unavailable", "games": []}
+                
+            data = response.json()
+            games = []
+            
+            # Get today's games (first element of gameWeek)
+            if data.get("gameWeek") and len(data["gameWeek"]) > 0:
+                today_games = data["gameWeek"][0].get("games", [])
+                
+                for game in today_games:
+                    # Determine period/status
+                    period = game.get("gameState", "Scheduled")
+                    if "periodDescriptor" in game:
+                        pd = game["periodDescriptor"]
+                        if period == "LIVE" or period == "CRIT":
+                            period = f"P{pd.get('number', '?')}"
+                        elif period == "OFF" or period == "FINAL":
+                            period = "Final"
+                            if pd.get("periodType") == "OT": period += " (OT)"
+                            elif pd.get("periodType") == "SO": period += " (SO)"
+
+                    games.append({
+                        "home": game["homeTeam"]["commonName"]["default"],
+                        "away": game["awayTeam"]["commonName"]["default"],
+                        "home_score": game["homeTeam"].get("score", 0),
+                        "away_score": game["awayTeam"].get("score", 0),
+                        "period": period
+                    })
+            
+            return {"games": games}
+            
+    except Exception as e:
+        print(f"Error fetching scores: {e}")
+        return {"error": str(e), "games": []}

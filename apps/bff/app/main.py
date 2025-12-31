@@ -35,10 +35,14 @@ def read_root():
     return {"service": "bff", "status": "healthy"}
 
 @app.get("/dashboard")
-async def get_dashboard():
+async def get_dashboard(lat: float = None, lon: float = None):
     async with httpx.AsyncClient() as client:
         # Fetch data in parallel
-        weather_task = client.get(f"{WEATHER_URL}/weather/Montreal")
+        if lat is not None and lon is not None:
+            weather_task = client.get(f"{WEATHER_URL}/weather/coordinates", params={"lat": lat, "lon": lon})
+        else:
+            weather_task = client.get(f"{WEATHER_URL}/weather/Ottawa")  # Default location
+            
         hockey_task = client.get(f"{HOCKEY_URL}/scores")
         news_task = client.get(f"{NEWS_URL}/news")
 
