@@ -1,13 +1,16 @@
 param (
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [switch]$Up,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [switch]$Down,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [switch]$Restart
 )
+$ErrorActionPreference = "Stop"
+# Ensure we are running from the script's directory
+Set-Location $PSScriptRoot
 
 $ClusterConfig = "deploy/cluster/k3d.yaml"
 
@@ -18,7 +21,58 @@ function Remove-Cluster {
 
 function Create-Cluster {
     Write-Host "🌱 Creating Cluster..." -ForegroundColor Green
-    k3d cluster create --config $ClusterConfig
+    # Check if cluster exists to avoid error if running -Up on existing cluster
+    $clusters = k3d cluster list -o json | ConvertFrom-Json
+    if ($clusters.name -contains "sre-dashboard-cluster") {
+        Write-Host "   Cluster already exists." -ForegroundColor Yellow
+    }
+    else {
+        k3d cluster create --config $ClusterConfig
+    }
+    
+    # Ensure we have the kubeconfig and context
+    Write-Host "   Refreshing kubeconfig..."
+    
+    # Aggressively clean up potential stale config to prevent GKE conflicts
+    # Use cmd /c to avoid PowerShell NativeCommandError on stderr output
+    cmd /c "kubectl config delete-context k3d-sre-dashboard-cluster 2>&1" | Out-Null
+    cmd /c "kubectl config delete-cluster k3d-sre-dashboard-cluster 2>&1" | Out-Null
+    cmd /c "kubectl config delete-user k3d-sre-dashboard-cluster 2>&1" | Out-Null
+
+    k3d kubeconfig merge sre-dashboard-cluster --kubeconfig-switch-context
+    
+    # Patch kubeconfig to use 127.0.0.1 if host.docker.internal is used (common issue on Windows)
+    $clusterName = "k3d-sre-dashboard-cluster"
+    try {
+        # Use correct quoting for JSONPath on Windows
+        $serverUrl = kubectl config view -o jsonpath="{.clusters[?(@.name=='$clusterName')].cluster.server}"
+        if ($serverUrl -match "host.docker.internal") {
+            Write-Host "   Patching kubeconfig to use 127.0.0.1..." -ForegroundColor Yellow
+            $newUrl = $serverUrl -replace "host.docker.internal", "127.0.0.1"
+            kubectl config set-cluster $clusterName --server=$newUrl
+        }
+    }
+    catch {
+        Write-Warning "Failed to patch kubeconfig: $_"
+    }
+    
+    # Verify context
+    $currentContext = kubectl config current-context
+    if ($currentContext -ne "k3d-sre-dashboard-cluster") {
+        Write-Error "Failed to switch context. Current context is '$currentContext'. Expected 'k3d-sre-dashboard-cluster'."
+    }
+    
+    # Verify connectivity
+    Write-Host "   Verifying connectivity..."
+    try {
+        $info = kubectl cluster-info
+        Write-Host "   Connected to: $info" -ForegroundColor Gray
+    }
+    catch {
+        Write-Error "   Could not connect to the cluster. It might be starting up or the config is invalid."
+    }
+
+    Write-Host "   Context set to $currentContext" -ForegroundColor Green
 }
 
 function Build-Images {
